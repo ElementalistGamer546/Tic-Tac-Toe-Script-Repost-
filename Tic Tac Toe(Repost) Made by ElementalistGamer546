@@ -10,7 +10,7 @@ local End = Signals.End
 local Symbols = workspace.Board.Symbols
 local Misc = ReplicatedStorage.Misc
 local PlayerHighlight = Misc.PlayerHighlight --the highlight stored in repstorage
-local CurrentGame = {} -- the game tabe player will be put in
+local CurrentGame = {} -- the game table player will be put in
 local OccupiedSpaces = {} -- when a player places a symbol in any of the squares that square will be put in this table, prevents placing multiple symbols in the same sqaure
 local DefaultBoard = {
  {0,0,0},
