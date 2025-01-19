@@ -1,0 +1,312 @@
+--Module Script
+local TTT = {}
+TTT.__index = TTT
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Signals = ReplicatedStorage.Signals
+local DisableGui = Signals.DisableGui
+local End = Signals.End
+local Symbols = workspace.Board.Symbols
+local Misc = ReplicatedStorage.Misc
+local PlayerHighlight = Misc.PlayerHighlight --the highlight stored in repstorage
+local CurrentGame = {} -- the game tabe player will be put in
+local OccupiedSpaces = {} -- when a player places a symbol in any of the squares that square will be put in this table, prevents placing multiple symbols in the same sqaure
+local DefaultBoard = {
+ {0,0,0},
+ {0,0,0}, 
+ {0,0,0} --this table is then visualized to the board in the self:Initialize function
+}
+function TTT.Create(Pad1: BasePart, Pad2: BasePart, Board: Model) -- this func gets the pads required for the game, and the board model which will be used
+ local XO = setmetatable({},TTT)
+  
+ XO.CurrentGame = CurrentGame
+ XO.Winner = nil
+ XO.WinPattern = nil
+ XO.OccupiedSpaces = OccupiedSpaces
+ XO.Pad1 = Pad1
+ XO.Board = Board
+ 
+ XO.Pad2 = Pad2
+ XO.IsPlaying = false --detects if the game is running
+ XO.CurrentPlayer = nil -- returns the player who is going to place the next symbol
+ 
+ XO.DefaultBoard = DefaultBoard
+ XO.CurrentSymbol = nil --same thing as Code, except when the players touch a pad their "Symbol" Attribute becomes X or O depending on the pad they are in touch with
+ XO.Code = nil --theres 2 codes, X and O, it changes every time a symbol has been placed
+ 
+ XO.Symbols = XO.Board.Symbols --there are X and O symbols in all of the 9 squares so in total there are 18 symbols, they are transparent when the game just started
+ XO.Highlight = nil
+ XO.Patterns = XO.Board.Patterns -- theres a folder called "Patterns in the board
+ 
+ --[[
+ 
+ So Theres 2 Pads that when the player gets on them they participate and if both pads have a player on it the game starts
+ 
+ ]]--
+ 
+ XO:InitializeBoard()
+   
+ return XO
+end
+function TTT:GetFirstPlayer()
+ return self.Pad1.Player.Value --Every Pad Has An object value named Player and despite theyre named player it gets the character actually yeah dont ask
+end
+function TTT:GetSecondPlayer()
+ return self.Pad2.Player.Value
+end
+function TTT:StartGame()
+ local Character1 = self:GetFirstPlayer()
+ local Character2 = self:GetSecondPlayer()
+ 
+ if Character1 and Character2 then -- When the game starts the player who got X gets highlighted
+  Character1:SetAttribute("Highlighted", true)
+  Character2:SetAttribute("Highlighted", false) --character 1 has the X value resuting them to get highlighted first
+  
+  self.IsPlaying = true --game is now running
+  self.CurrentPlayer = Character1
+  self.Code = "X" --signaling that the game will start with X
+  self.Highlight = PlayerHighlight:Clone() --clones the highlight from the replicated storage and gets it to workspace
+  
+  self.Highlight.Parent = workspace.Misc
+  self.Highlight.Adornee = Character1
+  
+  table.insert(self.CurrentGame, {Character1, Character2}) --players get in the table to make sure they are playing
+  DisableGui:FireAllClients()
+ end
+end
+function TTT:InitializeBoard()
+ local children = self.Board.Points:GetChildren() 
+ local childIndex = 1
+ 
+ for row = 1, #self.DefaultBoard do
+  for column = 1, #self.DefaultBoard[row] do
+   if children[childIndex] then
+    self.DefaultBoard[row][column] = children[childIndex]
+    childIndex += 1
+   end
+  end
+ end
+end
+function TTT:UpdateHighlight() --unless the game is still ongoing the highlight with swap players each turn
+ if self.Winner == nil then
+  self.Highlight.Adornee = self.CurrentPlayer
+ else
+  self.Highlight:Destroy() -- if the game is ended and theres a winner the highlight gets destroyed
+ end
+end
+function TTT:UpdateCode()
+ if self.Code == "X" then
+  self.Code = "O"--updates the turns
+ else
+  self.Code = "X"
+ end
+end
+function TTT:PlaceSymbol(Character: Model ,Symbol, Point: BasePart)
+ if self.IsPlaying and not table.find(self.OccupiedSpaces, Point) then --check if a symbol is placed in that square (Point) 
+  local CharacterSymbol = Character:GetAttribute("Symbol") 
+  
+  if self.Code == CharacterSymbol and self.Winner == nil then
+   self.CurrentSymbol = Symbol 
+   self.CurrentSymbol.Transparency = 0
+   table.insert(self.OccupiedSpaces, Point)
+   for row = 1, #self.DefaultBoard do --when a symbol is placed the 0 in the certain area becomes the symbol
+    for column = 1, #self.DefaultBoard[row] do
+     if self.DefaultBoard[row][column] == Point then -- get the point which the symbol is placed 
+      self.DefaultBoard[row][column] = self.Code --turn the 0 in the placed Point to symbol
+      break
+     end
+    end
+   end
+     --Swap highlights and turns
+   if self.CurrentPlayer == self:GetFirstPlayer() then
+    self.CurrentPlayer = self:GetSecondPlayer()
+    self:GetSecondPlayer():SetAttribute("Highlighted", true)
+    self:GetFirstPlayer():SetAttribute("Highlighted";, false)
+   else
+    self.CurrentPlayer = self:GetFirstPlayer()
+    self:GetSecondPlayer():SetAttribute("Highlighted", false)
+    self:GetFirstPlayer():SetAttribute("Highlighted", true)
+   end
+   self:UpdateCode()
+   self:UpdateHighlight()
+   self:GetWinner()
+  end
+ end
+end
+function TTT:GetWinner()
+ for index, row in self.DefaultBoard do
+  if table.find(row,0) then --Skips the squares if they are not touched by any players or are 0
+   continue
+  end --checks for patterns
+  if row[1] == row[2] and row[2] == row[3] then -- checks if the linear patters match
+   self.Winner = row[1]
+   self:UpdateHighlight() --send the a signal after a winner is declared, resulting in the highlight being destroyed
+   self:Win("Column", self.Patterns[string.format("V1-%d";, index)]) 
+
+    --[[
+    colunm is for vertical checks the vertical patterns are named "V1 - 1", V1 - 2", "V1 - 3"
+
+    for instance V1-1 is the first column and the first line, V1 - 2 Is first column second line 
+    ]]
+
+   break
+  end
+ end
+ for columnIndex, thisColumn in self.DefaultBoard[1] do --return the first line
+  local skip = false
+  for _,row in self.DefaultBoard do
+   if row[columnIndex] == 0 then
+    skip = true --the same thing, skips the untouched points 
+    break
+   end
+  end
+
+  if skip then
+   continue
+  end
+  
+  if self.DefaultBoard[2][columnIndex] == thisColumn and self.DefaultBoard[3][columnIndex] == thisColumn then
+   self.Winner = thisColumn
+   self:UpdateHighlight()
+   self:Win("Column", self.Patterns[string.format("H%d-1", columnIndex)])
+
+    --[[
+    this is also similar except it checks the horizontal patterns
+    the patterns are named H1-1, H2-1, H3-1 the second number stays the same since they are already check by the code block that checks vertical lines  
+  ]]
+
+   break
+  end
+ end
+
+--this checks the first diagonal out of the 2 diagonals
+ local firstDiagonal = self.DefaultBoard[1][1] -- the first point
+ if firstDiagonal ~= 0 then --continues the code if the point isnt untouched
+  for i = 2, #self.DefaultBoard do --#self.DefaultBoard gets the number of tables(lines) which is 3 here
+   if self.DefaultBoard[i][i] ~= firstDiagonal then
+    break
+   elseif i == #self.DefaultBoard then -- if the symbol in the last or first point matches the other one in that point it gets the winner 
+    self.Winner = firstDiagonal
+    self:UpdateHighlight()
+    self:Win("FirstDiagonal", nil)
+    break
+   end
+  end
+ end
+ 
+ local firstAntiDiagonal = self.DefaultBoard[1][#self.DefaultBoard]
+ if firstAntiDiagonal ~= 0 then
+  for i = 2, #self.DefaultBoard do
+   if self.DefaultBoard[i][#self.DefaultBoard - i + 1] ~= firstAntiDiagonal then
+    break
+   elseif i == #self.DefaultBoard then
+    self.Winner = firstAntiDiagonal
+    self:UpdateHighlight()
+    self:Win("AntiDiagonal", nil)
+    break
+   end
+  end
+ end
+ if #self.OccupiedSpaces >= 9 and self.Winner == nil then --if the function doesnt get a winner or all of the points are full and none of them match to form a win pattern it draws
+  self:Draw()
+ end
+end
+function TTT:Win(Type, LinerPattern) --linear patterns gets a pattern which is not a diagonal
+ 
+ --this code block is a bugfix line where for example
+ --[[
+ 
+ when the board is like this {X,0,0,
+                              X,X,0,
+                              X,0,X}
+ 
+ there would be 2 lines of winning patterns(one vertical and one diagonal) appearing on the board so it checks if there are more then 2 lines on the board it makes all 
+ parts go transparent till theres only 1 pattern
+ 
+ ]]
+ 
+ for _, patterns: Part in self.Board.Patterns:GetChildren() do
+  if patterns.Transparency == 0 then
+   local VisibleParts = patterns
+    
+   if #VisibleParts > 1 then
+    repeat 
+     patterns.Transparency = 1 
+    until
+    #VisibleParts == 1
+   end
+  end
+ end
+ 
+ if typeof(Type) == "string" then
+  if Type == "AntiDiagonal" then
+   self.WinPattern = self.Patterns.AntiDiagonal
+   self.WinPattern.Transparency = 0
+  elseif Type == "FirstDiagonal" then
+   self.WinPattern = self.Patterns.FirstDiagonal
+   self.WinPattern.Transparency = 0
+  elseif Type == "Column" then
+   if LinerPattern ~= nil then
+    self.WinPattern = LinerPattern
+    self.WinPattern.Transparency = 0
+   end
+  end
+  
+  task.delay(2, function()-- waits 2 seconds before the round ends
+   self:End()
+  end)
+ end
+ 
+ self.Highlight:Destroy()
+end
+function TTT:Draw()
+ self.Highlight:Destroy() --when the game is a draw the cat symbol appears on the board
+ self.WinPattern = self.Patterns.Cat
+ self.WinPattern.Transparency = 0
+ 
+ task.delay(2, function()
+  self:End()
+ end)
+end
+local function fadeParts(Parts: Folder)
+ for _, parts in Parts:GetChildren() do
+  if (parts:IsA("Part") or parts:IsA("UnionOperation")) and parts.Transparency == 0 then
+   for fade = 0, 10, 1 do --make parts fade smoothly
+    parts.Transparency = fade / 10 
+    task.wait(0.05)
+   end
+  end
+ end
+end
+function TTT:End()
+ task.wait(1)
+ fadeParts(self.Patterns)
+ fadeParts(self.Symbols)
+ --resets all the values
+ self.Winner = nil
+ self.WinPattern = nil
+ self.Code = nil
+ 
+ self.CurrentSymbol = nil
+ self.CurrentPlayer = nil
+ if self.Highlight ~= nil then
+  self.Highlight:Destroy()
+  self.Highlight = nil
+ end
+ 
+ self.IsPlaying = false
+ self.DefaultBoard = {
+  {0,0,0},
+  {0,0,0},
+  {0,0,0}
+ }
+ 
+ self:InitializeBoard()
+ 
+ table.remove(self.CurrentGame, table.find(self.CurrentGame, {self:GetFirstPlayer(), self:GetSecondPlayer()})) 
+ table.clear(self.OccupiedSpaces)
+ 
+ End:Fire()
+end
+return TTT
